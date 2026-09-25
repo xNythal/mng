@@ -1,2 +1,4 @@
 Pillow
 typer
+pygame
+av

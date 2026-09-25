@@ -1,6 +1,6 @@
 from PIL import Image
 import typer
-import av
+from pathlib import Path
 
 app = typer.Typer()
 
@@ -103,6 +103,9 @@ def convert(input_path: str, output_path: str, fps: int = 30):
         fps = data[7]
         pixels = data[HEADER_SIZE:]
 
+        if fps == 0:
+            raise ValueError("Invalid MNG file: FPS cannot be 0")
+
         frame_size = width * height * 4
 
         if len(pixels) % frame_size != 0:
@@ -113,20 +116,79 @@ def convert(input_path: str, output_path: str, fps: int = 30):
 
         frame_count = len(pixels) // frame_size
 
+        if frame_count == 0:
+            raise ValueError("Invalid MNG file: contains no frames")
+
+        output_extension = Path(output_path).suffix.lower()
+
+        image_extensions = {
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+            ".bmp",
+            ".tiff",
+            ".tif",
+        }
+
+        if output_extension in image_extensions:
+            image = Image.frombytes(
+                "RGBA",
+                (width, height),
+                pixels[:frame_size],
+            )
+
+            try:
+                image.save(output_path)
+            except OSError:
+                image.convert("RGB").save(output_path)
+
+            typer.echo(
+                f"Converted {input_path} → {output_path} "
+                f"(first frame, {width}x{height})"
+            )
+
+            return
+
+        import av
+
+        try:
+            output = av.open(output_path, mode="w")
+        except av.error.FFmpegError as e:
+            raise ValueError(f"Unable to open output file: {e}") from e
+
+        with output:
+            stream = output.add_stream("libx264", rate=fps)
+            stream.width = width
+            stream.height = height
+            stream.pix_fmt = "yuv420p"
+
+            for frame_index in range(frame_count):
+                start = frame_index * frame_size
+                end = start + frame_size
+
+                image = Image.frombytes(
+                    "RGBA",
+                    (width, height),
+                    pixels[start:end],
+                )
+
+                frame = av.VideoFrame.from_image(image)
+
+                for packet in stream.encode(frame):
+                    output.mux(packet)
+
+            for packet in stream.encode():
+                output.mux(packet)
+
         typer.echo(
             f"Converted {input_path} → {output_path} "
             f"({width}x{height} @ {fps} FPS, {frame_count} frames)"
         )
 
-        # For now, only save the first frame.
-        image = Image.frombytes("RGBA", (width, height), pixels[:frame_size])
-
-        try:
-            image.save(output_path)
-        except OSError:
-            image.convert("RGB").save(output_path)
-
         return
+
+    import av
 
     try:
         container = av.open(input_path)
@@ -167,7 +229,8 @@ def convert(input_path: str, output_path: str, fps: int = 30):
                 elif image.size != (width, height):
                     raise ValueError(
                         f"All MNG frames must have the same dimensions: "
-                        f"expected {width}x{height}, got {frame_width}x{frame_height}"
+                        f"expected {width}x{height}, "
+                        f"got {frame_width}x{frame_height}"
                     )
 
                 f.write(image.tobytes())

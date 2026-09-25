@@ -53,7 +53,7 @@ jobs:
           pip install pyinstaller
 
       - name: Build
-        run: build.bat
+        run: ./build.bat
 
       - name: Upload Windows binary
         uses: actions/upload-artifact@v4
