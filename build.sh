@@ -2,7 +2,7 @@
 
 set -e
 
-OUTPUT_DIR="${1:-$HOME/.local/bin}"
+OUTPUT_DIR="${1:-dist}"
 
 mkdir -p "$OUTPUT_DIR"
 
