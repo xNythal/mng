@@ -2,3 +2,4 @@ Pillow
 typer
 pygame
 av
+numpy
